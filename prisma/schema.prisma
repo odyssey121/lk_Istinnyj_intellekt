@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum ReviewStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+}
+
+model Company {
+  id       Int      @id @default(autoincrement())
+  name     String
+  users    User[]
+  branches Branch[]
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  companyId    Int?
+  company      Company? @relation(fields: [companyId], references: [id])
+}
+
+model Branch {
+  id         Int           @id @default(autoincrement())
+  name       String
+  address    String
+  externalId String        @unique
+  companyId  Int
+  company    Company       @relation(fields: [companyId], references: [id])
+  metrics    DailyMetric[]
+  reviews    Review[]
+
+  @@index([companyId])
+}
+
+model DailyMetric {
+  id       Int      @id @default(autoincrement())
+  branchId Int
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  date     DateTime @db.Date
+  views    Int
+  clicks   Int
+  calls    Int
+  routes   Int
+
+  @@unique([branchId, date])
+}
+
+model Review {
+  id       Int          @id @default(autoincrement())
+  branchId Int
+  branch   Branch       @relation(fields: [branchId], references: [id])
+  author   String
+  text     String
+  rating   Int
+  date     DateTime     @db.Date
+  status   ReviewStatus @default(NEW)
+
+  @@index([branchId, date])
+}
+
+enum ImportMethod {
+  GET
+  POST
+}
+
+model ImportSettings {
+  id        Int          @id @default(autoincrement())
+  key       String       @unique
+  sourceUrl String
+  method    ImportMethod @default(GET)
+}
+
+model ImportLog {
+  id              Int          @id @default(autoincrement())
+  runId           String
+  attempt         Int
+  redirect        Int          @default(0)
+  branchId        Int
+  branchName      String
+  initiatedBy     String
+  createdAt       DateTime     @default(now())
+  finishedAt      DateTime?
+  durationMs      Int?
+  method          ImportMethod
+  url             String
+  requestHeaders  Json
+  requestBody     String?
+  responseStatus  Int?
+  responseHeaders Json?
+  responseBody    String?
+  error           String?
+
+  @@index([createdAt, id])
+  @@index([runId])
+}

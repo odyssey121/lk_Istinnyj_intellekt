@@ -1,0 +1,63 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: intelligence
+      POSTGRES_PASSWORD: intelligence
+      POSTGRES_DB: intelligence
+    ports: ["127.0.0.1:54329:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intelligence"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  migrate:
+    build: { context: ., target: api }
+    environment:
+      DATABASE_URL: postgresql://intelligence:intelligence@db:5432/intelligence
+    command: sh -c "npm run db:migrate && npm run db:seed"
+    depends_on:
+      db: { condition: service_healthy }
+  mock:
+    build: { context: ., target: mock }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4001/health').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  api:
+    build: { context: ., target: api }
+    environment:
+      DATABASE_URL: postgresql://intelligence:intelligence@db:5432/intelligence
+      JWT_SECRET: ${JWT_SECRET:-demo-only-change-this-secret-before-deployment-2026}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:8080}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      SOURCE_URL: http://mock:4001
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      mock: { condition: service_healthy }
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3000/api/health').then(r=>{if(!r.ok)process.exit(1)})",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+  web:
+    build: { context: ., target: web }
+    ports: ["8080:80"]
+    depends_on:
+      api: { condition: service_healthy }
+volumes:
+  postgres_data:
